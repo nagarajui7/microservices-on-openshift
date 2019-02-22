@@ -1,1 +1,110 @@
+#Installation:
+Quick Installation and Advanced installation
+Quick one will be handled by atomic-openshift installer
+
+#####basic utilities#####
+update the yum repositories on the vm where openshift needs to be installed
+yum install wget git net-tools bind-utils iptables-services bridge-utils bash-completion
+yum install gcc python-virtualenv
+yum update
+yum install atomic-openshift-utils
+
+#####setup docker#####
+yum install docker
+vi /etc/sysconfig/docker and add OPTIONS='--selinux-enabled --insecure-registry 172.30.0.0/16'
+
+#####docker storage configuration#####
+1. use and additional block device
+cat <<EOF > /etc/sysconfig/docker-storage-setup
+DEVS=/dev/vdc
+VG=docker-vg
+EOF
+
+2.use existing volume
+cat <<EOF > /etc/sysconfig/docker-storage-setup
+VG=docker-vg
+EOF
+
+3.use remaining space from a volume group where root is located
+
+select one the option above and run docker-storage-setup
+
+#####restarting docker#####
+systemctl enable docker
+systemctl restart docker
+
+#####atomic installer which helps in openshift installation#####
+atomic-openshift-installer install
+
+#####edit config file#####
+vi ~/.config/openshift/installer.cfg.yml and add the host IP addresses, DNS names and which should be made master
+-----------------------
+example configuration:
+-----------------------
+version: v1 
+variant: openshift-enterprise 
+variant_version: 3.0 
+ansible_ssh_user: root 
+ansible_log_path: /tmp/ansible.log 
+hosts: 
+- ip: 10.0.0.1 
+  hostname: master-private.example.com 
+  public_ip: 24.222.0.1 
+  public_hostname: master.example.com 
+  master: true 
+  node: true 
+  connect_to: 24.222.0.1 
+- ip: 10.0.0.2
+  hostname: node1-private.example.com
+  public_ip: 24.222.0.2
+  public_hostname: node1.example.com
+  node: true
+  connect_to: 10.0.0.2
+  
+#####deploy integrated docker registry which helps in S2I#####
+oadm registry --config=/etc/openshift/master/admin.kubeconfig \
+  --credentials=/etc/openshift/master/openshift-registry.kubeconfig \
+  --images='registry.access.redhat.com/openshift3/ose-${component}:${version}' 
+Note: by default the registry uses a ephermal storage for storing docker images
+
+#####accessing the registry#####
+oc login
+oc whoami -t
+docker login -u <username> -e <any_email_address> -p <token_value> <registry_service_host:port>
+ex: docker pull busybox:latest
+ and under users add:
+ users:
+- system:serviceaccount:openshift-infra:build-controller
+- system:serviceaccount:default:router
+
+#####expose the registry #####
+apiVersion: v1
+kind: Route
+metadata:
+  name: registry
+spec:
+  host: <host> -- host for the route
+  to:
+    kind: Service
+    name: docker-registry -- name of the registry
+  tls:
+    termination: passthrough 
+sudo mkdir -p /etc/docker/certs.d/<host>
+sudo cp <ca certificate file> /etc/docker/certs.d/<host>
+sudo systemctl restart docker
+Note: Test it with oc get imagestreams
+
+#####deploy router#####
+Create a service account:
+{"kind":"ServiceAccount","apiVersion":"v1","metadata":{"name":"router"}}
+Edit SCC(Security Context Constraints)
+oc edit scc privileged and under users add:
+users:
+- system:serviceaccount:openshift-infra:build-controller
+- system:serviceaccount:default:router
+
+
+
+
+
 
