@@ -95,13 +95,17 @@ sudo systemctl restart docker
 Note: Test it with oc get imagestreams
 
 #####deploy router#####
-Create a service account:
+1. Create a service account:
 {"kind":"ServiceAccount","apiVersion":"v1","metadata":{"name":"router"}}
 Edit SCC(Security Context Constraints)
 oc edit scc privileged and under users add:
 users:
 - system:serviceaccount:openshift-infra:build-controller
 - system:serviceaccount:default:router
+2. Deploying the Default HAProxy Router
+oadm router <router_name> -o yaml --images=myrepo/myimage:mytag \
+    --credentials='/etc/openshift/master/openshift-router.kubeconfig' \
+    --service-account=router
 
 
 
